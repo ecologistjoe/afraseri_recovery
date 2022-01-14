@@ -1,0 +1,78 @@
+model {
+
+    #get survival and transition rates of adults from Panel Data
+    # sumA[i] and sumR[i] are the same as A0[i] and R0[i], except that
+    # samples with A0[i]==0 or R0[i]==0 are removed since those are 
+    # not allowed as parameters to dmulti or dbinom
+    for(i in 1:NUM_ADULT_SAMP){
+        sumA[i] <- sum(A2ARD[i,1:3]);
+        A2ARD[i,1:3] ~ dmulti(Pa[1:3], sumA[i])
+    }
+
+    for(i in 1:NUM_REPROD_SAMP) {
+        R2R[i] ~ dbin(Prr, sumR[i])
+    }
+    
+    #get other transition probabilities from aggregate data
+    for(i in 1:NUM_SAMPLES) {
+        # Define the transition model
+        S1_mu[i] <- Pss*S0[i] + Bsr*R0[i]
+        J1_mu[i] <- Pjj*J0[i] + Pjs*S0[i] + Bjr*R0[i]
+        A1_mu[i] <- Paa*A0[i] + Paj*J0[i] + Pas*S0[i]
+        R1_mu[i] <- Prr*R0[i] + Pra*A0[i] + Prj*J0[i]
+        
+        # Same as putting a noise term on the above equations
+        S1[i] ~ dnorm(S1_mu[i], tau_S)
+        J1[i] ~ dnorm(J1_mu[i], tau_J)
+        A1[i] ~ dnorm(A1_mu[i], tau_A)
+        R1[i] ~ dnorm(R1_mu[i], tau_R)
+    }
+
+    # Uninformative prior on precision of normal distribution
+    tau_S ~ dgamma(1, 0.1)
+    tau_J ~ dgamma(1, 0.1)
+    tau_A ~ dgamma(1, 0.1)
+    tau_R ~ dgamma(1, 0.1)
+    
+    # Probabilties of moving from Seedlngs
+    Ps[1:4] ~ ddirch(alpha4[])
+    Pss <- Ps[1]
+    Pjs <- Ps[2]
+    Pas <- Ps[3]
+    
+    # Probabilties of moving from Juveniles
+    Pj[1:4] ~ ddirch(alpha4[])
+    Pjj <- Pj[1]
+    Paj <- Pj[2]
+    Prj <- Pj[3]
+        
+    # Probabilties of moving from Adults
+    Pa[1:3] ~ ddirch(alpha3[])
+    Paa <- Pa[1]
+    Pra <- Pa[2]
+ 
+    # Probability of staying in Reproduct Adult
+    # This reduces to Binomial from Multinomal since only two options
+    # and so has a beta distribution.
+    Prr ~ dbeta(1,1)
+ 
+    # Uninformative Prior on Reproductive rates
+    # But constrain Bjr to be somewhat realistic given
+    #   seedling recruitment and survival rates
+    Bsr ~ dgamma(1,0.1)
+    Bjr ~ dgamma(mu_pjr,0.1)
+    mu_pjr <- Bsr/Pss*Pjs/2*0.1
+    
+    #Construct transition Matrix
+    G[1,1] <- Pss;    G[1,2] <- 0;      G[1,3] <- 0;      G[1,4] <- Bsr
+    G[2,1] <- Pjs;    G[2,2] <- Pjj;    G[2,3] <- 0;      G[2,4] <- Bjr
+    G[3,1] <- Pas;    G[3,2] <- Paj;    G[3,3] <- Paa;    G[3,4] <- 0
+    G[4,1] <- 0;      G[4,2] <- Prj;    G[4,3] <- Pra;    G[4,4] <- Prr
+    
+    # Calculuate Eigenvalue for ease of monitoring
+    #  Eigenvalues are unused in analyses.
+    y[1:4] <- eigen.vals(G[,])
+    z <- ranked(y[1:4],4)
+    
+}
+
